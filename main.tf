@@ -31,28 +31,31 @@ resource "aws_internet_gateway" "VPC01-IGW" {
   }
 }
 
-# Create a Public Subnet
-resource "aws_subnet" "VPC01-Public-SN" {
+
+#create a public subnet
+resource "aws_subnet" "public-subnet" {
   vpc_id     = aws_vpc.VPC-01.id
   cidr_block = "192.168.1.0/24"
 
   tags = {
-    Name = "VPC01-Public-SN"
+    Name = "PUBLIC-SUBNET"
   }
 }
 
-# Create a Private Subnet
-resource "aws_subnet" "VPC01-Private-SN" {
+
+#create a private subnet
+resource "aws_subnet" "private-subnet" {
   vpc_id     = aws_vpc.VPC-01.id
-  cidr_block = "192.168.3.0/24"
+  cidr_block = "192.168.2.0/24"
 
   tags = {
-    Name = "VPC01-Private-SN"
+    Name = "PRIVATE-SUBNET"
   }
 }
 
-# Create a Public Route Table
-resource "aws_route_table" "VPC01-Public-RT" {
+
+#route table for public subnet
+resource "aws_route_table" "public-rt" {
   vpc_id = aws_vpc.VPC-01.id
 
   route {
@@ -61,97 +64,111 @@ resource "aws_route_table" "VPC01-Public-RT" {
   }
 
   tags = {
-    Name = "VPC01-Public-RT"
+    Name = "public-rt"
   }
 }
 
-resource "aws_route_table_association" "VPC01-Public-RT-Association" {
-  subnet_id      = aws_subnet.VPC01-Public-SN.id
-  route_table_id = aws_route_table.VPC01-Public-RT.id
+#create route table association for public subnet
+resource "aws_route_table_association" "public-rt-association" {
+  subnet_id      = aws_subnet.public-subnet.id
+  route_table_id = aws_route_table.public-rt.id
 }
 
-# Create a EIP
-resource "aws_eip" "Nat-EIP" {
+
+
+#create elastic IP for NAT gateway
+resource "aws_eip" "nat-eip" {
   domain   = "vpc"
 }
 
-# Create a Nat Gateway
-resource "aws_nat_gateway" "VPC01-Nat_Gateway" {
-  allocation_id = aws_eip.Nat-EIP.id
-  subnet_id     = aws_subnet.VPC01-Public-SN.id
+#NAT gateway for private subnet
+resource "aws_nat_gateway" "VPC01-NAT" {
+  allocation_id = aws_eip.nat-eip.id
+  subnet_id     = aws_subnet.public-subnet.id
 
   tags = {
-    Name = "VPC01-Nat_Gateway"
+    Name = "VPC01-NAT"
   }
 }
 
-# Create a Private Route Table
-resource "aws_route_table" "VPC01-Private-RT" {
+
+#route table for private subnet
+resource "aws_route_table" "private-rt" {
   vpc_id = aws_vpc.VPC-01.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_nat_gateway.VPC01-Nat_Gateway.id
+    gateway_id = aws_nat_gateway.VPC01-NAT.id
   }
 
   tags = {
-    Name = "VPC01-Private-RT"
+    Name = "private-rt"
   }
 }
 
-resource "aws_route_table_association" "VPC01-Private-RT-Association" {
-  subnet_id      = aws_subnet.VPC01-Private-SN.id
-  route_table_id = aws_route_table.VPC01-Private-RT.id
+#create route table association for private subnet
+resource "aws_route_table_association" "private-rt-association" {
+  subnet_id      = aws_subnet.private-subnet.id
+  route_table_id = aws_route_table.private-rt.id
 }
 
-# Create a Security Group
-resource "aws_security_group" "VPC01-VM-NSG" {
-  name        = "VPC01-VM-NSG"
+#create security group 
+resource "aws_security_group" "NSG" {
+  name        = "NSG"
   description = "Allow SSH inbound traffic and all outbound traffic"
   vpc_id      = aws_vpc.VPC-01.id
 
   tags = {
-    Name = "VPC01-VM-NSG"
+    Name = "NSG"
   }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "allow_ssh_ipv4" {
-  security_group_id = aws_security_group.VPC01-VM-NSG.id
+#allow inbound SSH traffic from anywhere
+resource "aws_vpc_security_group_ingress_rule" "allow_SSH_ipv4" {
+  security_group_id = aws_security_group.NSG.id
   cidr_ipv4         = "0.0.0.0/0"
   from_port         = 22
   ip_protocol       = "tcp"
   to_port           = 22
 }
 
-resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv4" {
-  security_group_id = aws_security_group.VPC01-VM-NSG.id
+#create egress rule to allow all outbound traffic
+resource "aws_vpc_security_group_egress_rule" "allow_alltraffic_ipv4" {
+  security_group_id = aws_security_group.NSG.id
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1" # semantically equivalent to all ports
 }
 
-# Create a Public Instance
-resource "aws_instance" "VPC01-Public-VM" {
-  ami           = "ami-0b3ba1acb76a70451"
+#key pair for EC2 instance
+resource "aws_key_pair" "terraform_key" {
+  key_name   = "terraform_key"
+  public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD3F6tyPEFEzV0LX3X8BsXdMsQz1x2cEikKDEY0aIj41qgxMCP/iteneqXSIFZBp5vizPvaoIR3Um9xK7PGoW8giupGn+EPuxIA4cDM4vzOqOkiMPhz5XK0whEjkVzTo4+S0puvDZuwIsdiW9mxhJc7tgBNL0cYlWSYVkz4G/fslNfRPW5mYAM49f4fhtxPb5ok4Q2Lg9dPKVHO/Bgeu5woMc7RY0p1ej6D4CKFE6lymSDJpW0YHX/wqE9+cfEauh7xZcG0q9t2ta6F6fmX0agvpFyZo8aFbXeUBr7osSCJNgvavWbM/06niWrOvYX2xwWdhXmXSrbX8ZbabVohBK41 email@example.com"
+}
+
+#public instance
+resource "aws_instance" "PUBLIC-EC2" {
+  ami           = "ami-0d02821d8216364ac"
   instance_type = "t3.micro"
-  key_name      = "Terraform_Server_Key"
-  subnet_id     = aws_subnet.VPC01-Public-SN.id
-  vpc_security_group_ids  = [aws_security_group.VPC01-VM-NSG.id]
-  associate_public_ip_address 	=  true
+  key_name = aws_key_pair.terraform_key.key_name
+  subnet_id = aws_subnet.public-subnet.id
+  vpc_security_group_ids = [aws_security_group.NSG.id]
+  associate_public_ip_address = true
 
   tags = {
-    Name = "VPC01-Public-VM"
+    Name = "PUBLIC-EC2"
   }
 }
 
-# Create a Private Instance
-resource "aws_instance" "VPC01-Private-VM" {
-  ami           = "ami-0b3ba1acb76a70451"
+#private instance
+resource "aws_instance" "PRIVATE-EC2" {
+  ami           = "ami-0d02821d8216364ac"
   instance_type = "t3.micro"
-  key_name      = "Terraform_Server_Key"
-  subnet_id     = aws_subnet.VPC01-Private-SN.id
-  vpc_security_group_ids  = [aws_security_group.VPC01-VM-NSG.id]
+  key_name = aws_key_pair.terraform_key.key_name
+  subnet_id = aws_subnet.private-subnet.id
+  vpc_security_group_ids = [aws_security_group.NSG.id]
+  associate_public_ip_address = false
 
   tags = {
-    Name = "VPC01-Private-VM"
+    Name = "PRIVATE-EC2"
   }
 }
